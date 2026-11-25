@@ -15,6 +15,7 @@ import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
@@ -48,7 +49,7 @@ public class WalletTransaction {
                              BigDecimal amount, String currency, TransactionStatus status, String failureCode, String requestHash) {
         this.type = type; this.initiatedBy = initiatedBy; this.source = source; this.destination = destination;
         this.amount = amount.setScale(4); this.currency = currency; this.status = status; this.failureCode = failureCode;
-        this.requestHash = requestHash; this.createdAt = Instant.now();
+        this.requestHash = requestHash; this.createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
     }
     public UUID getId() { return id; }
     public WalletTransactionType getType() { return type; }

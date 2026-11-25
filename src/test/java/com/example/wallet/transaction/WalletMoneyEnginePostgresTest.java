@@ -25,6 +25,7 @@ import org.junit.jupiter.api.AfterAll;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -169,7 +170,10 @@ class WalletMoneyEnginePostgresTest {
                 catch (Exception exception) { throw new RuntimeException(exception); }
             }));
         }
-        for (CompletableFuture<Integer> future : futures) assertEquals(201, future.get(30, TimeUnit.SECONDS));
+        for (CompletableFuture<Integer> future : futures) {
+            int responseStatus = future.get(30, TimeUnit.SECONDS);
+            assertEquals(201, responseStatus, "A concurrent transfer failed; inspect application logs for its exception");
+        }
         assertAccount(alice, "0.0000");
         assertAccount(bob, "20.0000");
         assertLedgerInvariant(accounts.findByAccountNumber(alice.accountNumber()).orElseThrow());
@@ -189,8 +193,8 @@ class WalletMoneyEnginePostgresTest {
         deposit(bob, "10", "reverse-fund-bob");
         var aToB = CompletableFuture.supplyAsync(() -> performTransfer(alice, bob.accountNumber(), "5", "ab"));
         var bToA = CompletableFuture.supplyAsync(() -> performTransfer(bob, alice.accountNumber(), "3", "ba"));
-        assertEquals(201, aToB.get(15, TimeUnit.SECONDS));
-        assertEquals(201, bToA.get(15, TimeUnit.SECONDS));
+        assertEquals(201, aToB.get(15, TimeUnit.SECONDS), "A to B response failed");
+        assertEquals(201, bToA.get(15, TimeUnit.SECONDS), "B to A response failed");
         assertAccount(alice, "8.0000");
         assertAccount(bob, "12.0000");
     }
@@ -210,7 +214,11 @@ class WalletMoneyEnginePostgresTest {
         List<MvcResult> results = new ArrayList<>();
         for (var future : futures) results.add(future.get(30, TimeUnit.SECONDS));
         assertEquals(1, results.stream().filter(r -> r.getResponse().getStatus() == 201).count());
-        assertEquals(19, results.stream().filter(r -> r.getResponse().getStatus() == 200).count());
+        assertEquals(19, results.stream().filter(r -> r.getResponse().getStatus() == 200).count(),
+                () -> "Unexpected concurrent retry responses: " + results.stream()
+                        .map(r -> r.getResponse().getStatus() + " "
+                                + new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8))
+                        .collect(java.util.stream.Collectors.joining(" | ")));
         String txId = json.readTree(results.getFirst().getResponse().getContentAsString()).get("id").asString();
         assertTrue(results.stream().allMatch(r -> {
             try { return txId.equals(json.readTree(r.getResponse().getContentAsString()).get("id").asString()); }
