@@ -1,6 +1,6 @@
 # Digital Wallet Backend
 
-A Java 21 and Spring Boot REST API for digital wallet accounts, deposits, transfers, and transaction history. It uses PostgreSQL for the wallet balances and append-only ledger, JWT for authentication, and Docker Compose for local development.
+A full-stack digital wallet demo with a React and TypeScript web app and a Java 21 Spring Boot REST API. PostgreSQL stores wallet balances and an append-only ledger; JWT secures account access. Docker Compose starts the web app, API, PostgreSQL, and Redis.
 
 ## Features
 
@@ -13,6 +13,7 @@ A Java 21 and Spring Boot REST API for digital wallet accounts, deposits, transf
 - Freeze and unfreeze accounts with admin audit records.
 - Validate the PostgreSQL schema with Flyway migrations and Hibernate schema validation.
 - Expose health checks, Swagger UI, and an OpenAPI contract for the frontend.
+- Provide a responsive web dashboard for sign-in, balance checks, simulated deposits, transfers, and transaction history.
 
 Deposits are simulated using a prefunded settlement wallet. No bank, card, or payment provider is connected, so this project does not move real money.
 
@@ -26,10 +27,22 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Open the web app at `http://localhost:3000`. The frontend proxies `/api/v1` to the backend, so browser requests use the same origin. The backend remains available at `http://localhost:8080` for API clients and Swagger.
+
 - Health: `http://localhost:8080/api/v1/actuator/health`
 - Swagger UI: `http://localhost:8080/api/v1/swagger-ui/index.html`
 - OpenAPI JSON: `http://localhost:8080/api/v1/v3/api-docs`
 - OpenAPI source: [`openapi.yaml`](openapi.yaml)
+
+To run the frontend by itself during development, start the backend and run:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Vite serves the app at `http://localhost:5173` and proxies API calls to the local backend.
 
 Optional admin bootstrap: set both `WALLET_ADMIN_EMAIL` and `WALLET_ADMIN_PASSWORD`. The configured account is created or promoted to `ADMIN` at startup. Use a unique strong password and keep it out of source control.
 
@@ -62,6 +75,8 @@ See [`.env.example`](.env.example). Required in Compose: `WALLET_JWT_SECRET`. Th
 
 The PostgreSQL integration suite uses Testcontainers by default. To use an already-running PostgreSQL test database, set `WALLET_TEST_DATABASE_URL`, `WALLET_TEST_DATABASE_USERNAME`, and `WALLET_TEST_DATABASE_PASSWORD` before running Maven. Tests use PostgreSQL rather than H2 and include concurrent transfer and idempotency checks.
 
+The frontend production bundle is checked in CI with `npm ci && npm run build`. CI also builds the Docker Compose stack and checks the web page and proxied API health endpoint.
+
 ## Project boundary
 
-This repository contains the backend platform, identity, wallet, transaction, ledger, and admin scopes. The frontend can use the REST routes and OpenAPI contract above. Real payment rails, production deployment, monitoring, and fraud controls require separate configuration and integrations.
+This project is a functional development demo, not a regulated payment service. Deposits are simulated. Real payment rails, identity verification, compliance controls, production deployment, monitoring, and fraud controls require separate review and integrations.

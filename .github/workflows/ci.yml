@@ -18,3 +18,31 @@ jobs:
           java-version: '21'
           cache: maven
       - run: ./mvnw -B verify
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: Build and start the full stack
+        run: WALLET_JWT_SECRET=github-actions-test-secret-with-more-than-32-bytes docker compose up -d --build
+      - name: Smoke test the web app and API proxy
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3000/api/v1/actuator/health > /tmp/wallet-health.json; then
+              grep -q '"status":"UP"' /tmp/wallet-health.json
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker compose logs
+              exit 1
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://localhost:3000/ | grep -q '<title>Digital Wallet</title>'
+      - name: Stop the full stack
+        if: always()
+        run: WALLET_JWT_SECRET=github-actions-test-secret-with-more-than-32-bytes docker compose down -v --remove-orphans
