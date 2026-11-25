@@ -39,28 +39,30 @@ public class WalletTransactionExecutor {
         var prior = idempotency.findByUserIdAndKey(userId, key);
         if (prior.isPresent()) return replay(prior.get(), requestHash);
 
-        WalletAccount customer = accounts.findByUserId(userId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
+        UUID customerId = accounts.findIdByUserId(userId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
                 "WALLET_NOT_FOUND", "Wallet account was not found"));
-        WalletAccount settlement = null;
-        WalletAccount destination = null;
+        UUID sourceId;
+        UUID destinationId;
         if (type == WalletTransactionType.DEPOSIT) {
-            settlement = accounts.findByKind(com.example.wallet.wallet.AccountKind.SETTLEMENT).orElseThrow(() ->
+            sourceId = accounts.findIdByKind(com.example.wallet.wallet.AccountKind.SETTLEMENT).orElseThrow(() ->
                     new IllegalStateException("Settlement account is missing"));
-            destination = customer;
+            destinationId = customerId;
         } else {
-            destination = accounts.findByAccountNumber(destinationNumber).orElseThrow(() -> new ApiException(
+            destinationId = accounts.findIdByAccountNumber(destinationNumber).orElseThrow(() -> new ApiException(
                     HttpStatus.UNPROCESSABLE_ENTITY, "DESTINATION_NOT_FOUND", "Destination account was not found"));
-            if (destination.getId().equals(customer.getId())) {
+            if (destinationId.equals(customerId)) {
                 throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "SELF_TRANSFER", "A wallet cannot transfer to itself");
             }
+            sourceId = customerId;
         }
 
-        WalletAccount source = type == WalletTransactionType.DEPOSIT ? settlement : customer;
-        List<WalletAccount> locked = accounts.findAllForUpdateInStableOrder(List.of(source.getId(), destination.getId()));
+        // Resolve IDs without loading wallet entities; loading them before a lock can leave
+        // stale versions in this persistence context while another request holds the rows.
+        List<WalletAccount> locked = accounts.findAllForUpdateInStableOrder(List.of(sourceId, destinationId));
         Map<UUID, WalletAccount> byId = new HashMap<>();
         locked.forEach(account -> byId.put(account.getId(), account));
-        source = byId.get(source.getId());
-        destination = byId.get(destination.getId());
+        WalletAccount source = byId.get(sourceId);
+        WalletAccount destination = byId.get(destinationId);
         if (source == null || destination == null) throw new IllegalStateException("Wallet account disappeared while locking");
 
         // Account locks serialize requests from the same wallet, including races on a new idempotency key.
