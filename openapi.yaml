@@ -74,6 +74,11 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/DepositRequest'}
       responses:
+        '200':
+          description: Idempotent replay of an earlier successful deposit
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Transaction'}
         '201':
           description: Deposit recorded
           content:
@@ -96,6 +101,11 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/TransferRequest'}
       responses:
+        '200':
+          description: Idempotent replay of an earlier successful transfer
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Transaction'}
         '201':
           description: Transfer recorded
           content:

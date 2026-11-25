@@ -47,4 +47,5 @@ public class User {
     public String getPasswordHash() { return passwordHash; }
     public Role getRole() { return role; }
     public Instant getCreatedAt() { return createdAt; }
+    public void grantAdminRole() { this.role = Role.ADMIN; }
 }

@@ -1,6 +1,5 @@
 package com.example.wallet.identity;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -8,12 +7,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import com.example.wallet.wallet.WalletAccountRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.junit.jupiter.api.AfterAll;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,20 +26,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "wallet.cors.allowed-origins=http://localhost:3000"
 })
 @AutoConfigureMockMvc
-@Testcontainers(disabledWithoutDocker = true)
 class UserRepositoryPostgresTest {
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
+    private static final String EXTERNAL_DB_URL = System.getenv("WALLET_TEST_DATABASE_URL");
+    private static final PostgreSQLContainer<?> POSTGRES = EXTERNAL_DB_URL == null || EXTERNAL_DB_URL.isBlank()
+            ? new PostgreSQLContainer<>("postgres:17-alpine") : null;
+
+    static { if (POSTGRES != null) POSTGRES.start(); }
+
+    @AfterAll static void stopPostgres() { if (POSTGRES != null) POSTGRES.stop(); }
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.datasource.url", () -> POSTGRES == null ? EXTERNAL_DB_URL : POSTGRES.getJdbcUrl());
+        registry.add("spring.datasource.username", () -> POSTGRES == null ? System.getenv("WALLET_TEST_DATABASE_USERNAME") : POSTGRES.getUsername());
+        registry.add("spring.datasource.password", () -> POSTGRES == null ? System.getenv("WALLET_TEST_DATABASE_PASSWORD") : POSTGRES.getPassword());
     }
 
     @Autowired
     UserRepository users;
+
+    @Autowired
+    WalletAccountRepository wallets;
 
     @Autowired
     PasswordEncoder passwordEncoder;
@@ -48,17 +54,13 @@ class UserRepositoryPostgresTest {
     @Autowired
     MockMvc mockMvc;
 
-    @BeforeEach
-    void clearUsers() {
-        users.deleteAll();
-    }
-
     @Test
     void emailIsUniqueInPostgresql() {
-        users.saveAndFlush(new User("same@example.com", "bcrypt-hash"));
+        String email = "same-" + java.util.UUID.randomUUID() + "@example.com";
+        users.saveAndFlush(new User(email, "bcrypt-hash"));
 
         assertThrows(DataIntegrityViolationException.class,
-                () -> users.saveAndFlush(new User("same@example.com", "another-bcrypt-hash")));
+                () -> users.saveAndFlush(new User(email, "another-bcrypt-hash")));
     }
 
     @Test
@@ -87,23 +89,27 @@ class UserRepositoryPostgresTest {
     }
 
     @Test
-    void registrationRollsBackWhenWalletProvisioningIsUnavailable() throws Exception {
+    void registrationCreatesUserAndWalletAtomically() throws Exception {
+        String email = "new-" + java.util.UUID.randomUUID() + "@example.com";
         mockMvc.perform(post("/api/v1/auth/register").contextPath("/api/v1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"new@example.com\",\"password\":\"a-strong-password\"}"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("WALLET_PROVISIONING_UNAVAILABLE"));
+                        .content("{\"email\":\"" + email + "\",\"password\":\"a-strong-password\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.accountNumber").value(org.hamcrest.Matchers.matchesPattern("[0-9]{12}")));
 
-        org.junit.jupiter.api.Assertions.assertFalse(users.existsByEmail("new@example.com"));
+        var user = users.findByEmail(email).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertTrue(wallets.findByUserId(user.getId()).isPresent());
     }
 
     @Test
     void validUserCanLogInButCannotAccessAdminRoutes() throws Exception {
-        users.saveAndFlush(new User("user@example.com", passwordEncoder.encode("a-strong-password")));
+        String email = "user-" + java.util.UUID.randomUUID() + "@example.com";
+        users.saveAndFlush(new User(email, passwordEncoder.encode("a-strong-password")));
 
         String token = mockMvc.perform(post("/api/v1/auth/login").contextPath("/api/v1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"USER@example.com\",\"password\":\"a-strong-password\"}"))
+                        .content("{\"email\":\"" + email.toUpperCase(java.util.Locale.ROOT) + "\",\"password\":\"a-strong-password\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();

@@ -10,6 +10,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -30,7 +32,8 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request validation failed", fields);
     }
 
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
+            MissingRequestHeaderException.class, HandlerMethodValidationException.class})
     ResponseEntity<ApiError> badRequest(Exception exception) {
         return response(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "Request body or parameters are invalid", Map.of());
     }

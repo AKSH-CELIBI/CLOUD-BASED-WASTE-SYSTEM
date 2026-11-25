@@ -34,6 +34,9 @@ wallet:
     expiration-seconds: ${WALLET_JWT_EXPIRATION_SECONDS:3600}
   cors:
     allowed-origins: ${WALLET_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+  admin:
+    email: ${WALLET_ADMIN_EMAIL:}
+    password: ${WALLET_ADMIN_PASSWORD:}
 
 management:
   endpoints:

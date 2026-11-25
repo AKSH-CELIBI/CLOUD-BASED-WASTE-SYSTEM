@@ -55,6 +55,9 @@ public class AuthService {
 
     public AuthTokenResponse login(LoginRequest request) {
         String email = normalize(request.email());
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Email or password is incorrect");
+        }
         authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(email, request.password()));
         return new AuthTokenResponse(jwtService.issue(email));
     }
